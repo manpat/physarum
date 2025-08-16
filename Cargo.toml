@@ -1,0 +1,9 @@
+[package]
+name = "physarum"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[dependencies.toybox]
+git = "https://github.com/manpat/toybox-rs.git"
