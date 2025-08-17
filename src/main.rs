@@ -40,23 +40,6 @@ struct AgentParameters {
 
 	movement_speed: f32,
 	inertia: f32,
-
-}
-
-fn gen_starting_conditions(size: Vec2) -> Vec<AgentState> {
-	use rand::random_range;
-
-	let mut v = Vec::new();
-
-	for _ in 0..5_000_000 {
-		v.push(AgentState {
-			pos: Vec2::new(random_range(0.0 ..= size.x), random_range(0.0 ..= size.y)),
-			vel: [random_range(-256..=256), random_range(-256..=256)],
-			heading: random_range(0.0 ..= TAU),
-		});
-	}
-
-	v
 }
 
 impl App {
