@@ -2,8 +2,8 @@ layout(local_size_x=8) in;
 
 struct Agent {
 	vec2 pos;
+	uint vel;
 	float heading;
-	float _pad;
 };
 
 layout(binding=0, r32ui) uniform uimage2D u_trail_map;

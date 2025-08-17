@@ -6,7 +6,7 @@ fn main() -> anyhow::Result<()> {
 
 struct App {
 	agent_buffer: gfx::BufferName,
-	num_agents: u32,
+	num_agents: i32,
 
 	trail_buffer: gfx::ImageHandle,
 	old_trail_buffer: gfx::ImageHandle,
@@ -61,11 +61,14 @@ fn gen_starting_conditions(size: Vec2) -> Vec<AgentState> {
 
 impl App {
 	fn new(ctx: &mut toybox::Context) -> anyhow::Result<App> {
-		let gfx::System{ core, resource_manager, .. } = &mut *ctx.gfx;
+		let gfx::System{ core, resource_manager, frame_encoder, .. } = &mut *ctx.gfx;
 
-		let starting_conditions = gen_starting_conditions(core.backbuffer_size().to_vec2());
+		let num_agents = 5_000_000;
+
 		let agent_buffer = core.create_buffer();
-		core.upload_immutable_buffer_immediate(agent_buffer, &starting_conditions);
+		core.allocate_buffer_storage(agent_buffer, num_agents * size_of::<AgentState>(), 0);
+
+		let num_agents = num_agents as i32;
 
 		let trail_buffer_request = gfx::CreateImageRequest::rendertarget("trail0", gfx::ImageFormat::Red(gfx::ComponentFormat::U32))
 			.clear_policy(gfx::ImageClearPolicy::Never)
@@ -78,6 +81,21 @@ impl App {
 			.clear_policy(gfx::ImageClearPolicy::Never)
 			.resize_to_backbuffer_fraction(1);
 
+		let trail_buffer = resource_manager.request(trail_buffer_request);
+		let old_trail_buffer = resource_manager.request(trail_buffer_request2);
+		let draw_buffer = resource_manager.request(draw_buffer_request);
+
+		// Init agent buffer
+		{
+			let init_agent_cs = resource_manager.load_compute_shader("shaders/init_agents.cs.glsl");
+
+			let mut group = frame_encoder.command_group(gfx::FrameStage::Start);
+			group.compute(init_agent_cs)
+				.groups(((num_agents + 7)/8, 1, 1))
+				.ssbo(0, agent_buffer)
+				.image(0, trail_buffer);
+		}
+
 		Ok(App {
 			update_agent_cs: resource_manager.load_compute_shader("shaders/update_agent.cs.glsl"),
 			update_draw_buffer_cs: resource_manager.load_compute_shader("shaders/update_draw_buffer.cs.glsl"),
@@ -85,12 +103,12 @@ impl App {
 			blur_trail_cs: resource_manager.load_compute_shader("shaders/blur_trail.cs.glsl"),
 			fade_trail_cs: resource_manager.load_compute_shader("shaders/fade_trail.cs.glsl"),
 
-			trail_buffer: resource_manager.request(trail_buffer_request),
-			old_trail_buffer: resource_manager.request(trail_buffer_request2),
-			draw_buffer: resource_manager.request(draw_buffer_request),
+			trail_buffer,
+			old_trail_buffer,
+			draw_buffer,
 
 			agent_buffer,
-			num_agents: starting_conditions.len() as u32,
+			num_agents,
 
 			agent_parameters: AgentParameters {
 				sensor_distance: 10.0,
@@ -146,12 +164,12 @@ impl toybox::App for App {
 			std::mem::swap(&mut self.old_trail_buffer, &mut self.trail_buffer);
 
 			group.compute(self.update_agent_cs)
-				.groups(((self.num_agents as i32 + 7)/8, 1, 1))
+				.groups(((self.num_agents + 7)/8, 1, 1))
 				.ssbo(0, self.agent_buffer)
 				.image(0, self.trail_buffer);
 
 			group.compute(self.write_trail_cs)
-				.groups(((self.num_agents as i32 + 7)/8, 1, 1))
+				.groups(((self.num_agents + 7)/8, 1, 1))
 				.ssbo(0, self.agent_buffer)
 				.image_rw(0, self.trail_buffer);
 		}
