@@ -2,8 +2,8 @@ layout(local_size_x=8) in;
 
 struct Agent {
 	vec2 pos;
+	uint vel;
 	float heading;
-	float _pad;
 };
 
 layout(binding=0, r32ui) readonly uniform uimage2D u_trail_map;
@@ -19,6 +19,7 @@ layout(binding=0) uniform AgentParameters {
 	float u_steer_amount;
 
 	float u_movement_speed;
+	float u_inertia;
 };
 
 
@@ -42,9 +43,11 @@ void main() {
 	const float sensor_spread = u_sensor_spread * 3.1415;
 	const float steer_angle = u_steer_amount * 3.1415;
 
-	const vec2 forward_direction = vec2(sin(agent.heading), cos(agent.heading));
-	const vec2 sensor_direction0 = vec2(sin(agent.heading + sensor_spread), cos(agent.heading + sensor_spread));
-	const vec2 sensor_direction1 = vec2(sin(agent.heading - sensor_spread), cos(agent.heading - sensor_spread));
+	const float heading = agent.heading;
+
+	const vec2 forward_direction = vec2(sin(heading), cos(heading));
+	const vec2 sensor_direction0 = vec2(sin(heading + sensor_spread), cos(heading + sensor_spread));
+	const vec2 sensor_direction1 = vec2(sin(heading - sensor_spread), cos(heading - sensor_spread));
 
 	const float forward_value = read_trail(agent.pos + forward_direction * u_sensor_distance);
 	const float left_value = read_trail(agent.pos + sensor_direction1 * u_sensor_distance);
@@ -59,9 +62,19 @@ void main() {
 		}
 	}
 
-	const vec2 move_direction = vec2(sin(agent.heading), cos(agent.heading));
+	const float strength = max(forward_value, max(left_value, right_value)) + 1.0;
 
-	agent.pos += move_direction * u_movement_speed;
+	const vec2 desired_direction = vec2(sin(agent.heading), cos(agent.heading));
+	const float desired_speed = u_movement_speed * (strength / (strength+1.0));
+	const vec2 desired_vel = desired_direction * desired_speed;
+
+	const vec2 current_vel = unpackSnorm2x16(agent.vel) * 100.0;
+	const float current_speed = length(current_vel);
+
+	vec2 velocity = current_vel + (desired_vel - current_vel) * (1.0 - u_inertia);
+
+	agent.pos += velocity;
+	agent.vel = packSnorm2x16(velocity / 100.0);
 
 	s_agents[agent_index] = agent;
 }

@@ -19,14 +19,15 @@ struct App {
 	update_draw_buffer_cs: gfx::ShaderHandle,
 
 	agent_parameters: AgentParameters,
+	blur_passes: u32,
 }
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 struct AgentState {
 	pos: Vec2,
+	vel: [i16; 2],
 	heading: f32,
-	_pad: u32,
 }
 
 #[repr(C)]
@@ -38,8 +39,8 @@ struct AgentParameters {
 	steer_amount: f32,
 
 	movement_speed: f32,
+	inertia: f32,
 
-	blur_passes: u32,
 }
 
 fn gen_starting_conditions(size: Vec2) -> Vec<AgentState> {
@@ -50,8 +51,8 @@ fn gen_starting_conditions(size: Vec2) -> Vec<AgentState> {
 	for _ in 0..5_000_000 {
 		v.push(AgentState {
 			pos: Vec2::new(random_range(0.0 ..= size.x), random_range(0.0 ..= size.y)),
+			vel: [random_range(-256..=256), random_range(-256..=256)],
 			heading: random_range(0.0 ..= TAU),
-			_pad: 0,
 		});
 	}
 
@@ -98,9 +99,10 @@ impl App {
 				steer_amount: 0.2,
 
 				movement_speed: 5.0,
+				inertia: 0.0,
+			},
 
-				blur_passes: 2,
-			}
+			blur_passes: 2,
 		})
 	}
 }
@@ -111,14 +113,15 @@ impl toybox::App for App {
 			.show(&ctx.egui, |ui| {
 				let params = &mut self.agent_parameters;
 
-				ui.add(egui::Slider::new(&mut params.sensor_distance, 0.0..=20.0).text("Sensor Distance"));
+				ui.add(egui::Slider::new(&mut params.sensor_distance, 0.0..=50.0).text("Sensor Distance"));
 				ui.add(egui::Slider::new(&mut params.sensor_spread, 0.0..=1.0).text("Sensor Spread"));
 
 				ui.add(egui::Slider::new(&mut params.steer_amount, 0.0..=1.0).text("Steer Amount"));
 
-				ui.add(egui::Slider::new(&mut params.movement_speed, 0.0..=20.0).text("Movement Speed"));
+				ui.add(egui::Slider::new(&mut params.movement_speed, 0.0..=50.0).text("Movement Speed"));
+				ui.add(egui::Slider::new(&mut params.inertia, 0.0..=1.0).text("Inertia"));
 
-				ui.add(egui::Slider::new(&mut params.blur_passes, 0..=10).text("Blur Passes"));
+				ui.add(egui::Slider::new(&mut self.blur_passes, 0..=10).text("Blur Passes"));
 			});
 
 		let mut group = ctx.gfx.frame_encoder.command_group(gfx::FrameStage::Main);
@@ -126,7 +129,7 @@ impl toybox::App for App {
 		group.bind_shared_ubo(0, &[self.agent_parameters.clone()]);
 
 		for _ in 0..2 {
-			for _ in 0..self.agent_parameters.blur_passes {
+			for _ in 0..self.blur_passes {
 				group.compute(self.blur_trail_cs)
 					.groups_from_image_size(self.trail_buffer)
 					.image(0, self.trail_buffer)
